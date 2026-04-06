@@ -1,5 +1,10 @@
 """Tests for deposit, withdraw, transfer, and the ACID rollback demo."""
 
+from datetime import datetime, timedelta, timezone
+
+from tests.conftest import TestSessionLocal
+from models.transaction import Transaction
+
 
 def setup_user_with_account(client, email, deposit=5000, account_type="savings"):
     """Helper: register, KYC, open account, return (headers, account_number)."""
@@ -55,6 +60,38 @@ def test_successful_transfer(client):
     }, headers=h1)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+
+
+def test_suspicious_large_transfer_starts_processing(client):
+    """Large transfers should start in processing and later be promoted to success."""
+    h1, acc1 = setup_user_with_account(client, "suspicious_sender@test.com", deposit=2000000)
+    h2, acc2 = setup_user_with_account(client, "suspicious_receiver@test.com", deposit=1000)
+
+    response = client.post("/transactions/transfer", json={
+        "from_account_number": acc1,
+        "to_account_number": acc2,
+        "amount": 1000000,
+        "simulate_failure": False,
+    }, headers=h1)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processing"
+    assert payload["is_flagged"] is True
+
+    db = TestSessionLocal()
+    try:
+        tx = db.query(Transaction).filter(Transaction.reference_id == payload["reference_id"]).first()
+        assert tx is not None
+        tx.created_at = datetime.now(timezone.utc) - timedelta(seconds=11)
+        db.commit()
+    finally:
+        db.close()
+
+    history = client.get(f"/transactions/history/{acc1}", headers=h1)
+    assert history.status_code == 200
+    matched = next(row for row in history.json() if row["reference_id"] == payload["reference_id"])
+    assert matched["status"] == "success"
 
 
 def test_transfer_rollback_demo(client):

@@ -15,7 +15,7 @@ function getCreatedAtMs(tx) {
 }
 
 function isHighValueSuspicious(tx) {
-  return Number(tx.amount) >= SUSPICIOUS_AMOUNT_THRESHOLD && tx.status !== 'failed';
+  return Number(tx.amount) >= SUSPICIOUS_AMOUNT_THRESHOLD && tx.is_flagged;
 }
 
 function getSuspiciousRemainingMs(tx) {
@@ -27,18 +27,17 @@ function getSuspiciousRemainingMs(tx) {
 }
 
 function getVisualStatus(tx) {
-  if (!isHighValueSuspicious(tx)) return tx.status;
-  return getSuspiciousRemainingMs(tx) > 0 ? 'processing' : 'success';
+  return tx.status;
 }
 
 function getVisualNotes(tx) {
   const notes = [];
   const remainingMs = getSuspiciousRemainingMs(tx);
 
-  if (remainingMs > 0) {
+  if (tx.status === 'processing' && remainingMs > 0) {
     notes.push('<span class="badge badge-suspicious">Suspicious</span>');
     notes.push('<span class="tx-processing-note"><span class="spinner-inline" aria-hidden="true"></span>Buffering for 10s</span>');
-  } else if (isHighValueSuspicious(tx)) {
+  } else if (tx.status === 'success' && isHighValueSuspicious(tx)) {
     notes.push('<span class="badge badge-success">Successful</span>');
   }
 
@@ -222,6 +221,7 @@ async function loadHistory(accountNumber) {
     `;
 
     const remainingWindows = txns
+      .filter(tx => tx.status === 'processing')
       .map(getSuspiciousRemainingMs)
       .filter(ms => ms > 0);
     if (remainingWindows.length > 0) {
@@ -302,6 +302,8 @@ async function handleTransfer(e) {
     const result = await api.transfer(fromAccount, toAccount, amount, simulateFail);
     if (result.status === 'failed') {
       showToast(`Transfer failed — money rolled back to your account. Reason: ${result.failure_reason}`, 'error');
+    } else if (result.status === 'processing') {
+      showToast(`₹${fmt(amount)} flagged as suspicious. Processing for 10 seconds. Ref: ${result.reference_id}`, 'info');
     } else {
       showToast(`₹${fmt(amount)} transferred successfully! Ref: ${result.reference_id}`, 'success');
     }
