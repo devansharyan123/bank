@@ -11,6 +11,7 @@ class LoanApplyRequest(BaseModel):
 
 class LoanResponse(BaseModel):
     id: int
+    user_id: int
     principal: Decimal
     annual_rate: Decimal
     tenure_months: int
