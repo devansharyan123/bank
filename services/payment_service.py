@@ -8,9 +8,11 @@ The transfer function demonstrates ACID atomicity:
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from database import get_settings
 from models.account import BankAccount
 from models.transaction import Transaction
 from models.user import User
@@ -20,12 +22,35 @@ from services.fraud_detection import run_fraud_check
 from utils.logger import logger
 
 
+settings = get_settings()
+
+
 def generate_reference_id() -> str:
     """Generate a unique reference ID like TXN-A1B2C3D4 for each transaction."""
     return f"TXN-{uuid.uuid4().hex[:8].upper()}"
 
 
 class PaymentService:
+
+    def _is_processing_complete(self, transaction: Transaction) -> bool:
+        created_at = transaction.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - created_at >= timedelta(seconds=10)
+
+    def _promote_processing_transactions(self, db: Session, transactions: list[Transaction]) -> None:
+        updated = False
+        for transaction in transactions:
+            if (
+                transaction.status == TransactionStatus.processing
+                and transaction.is_flagged
+                and self._is_processing_complete(transaction)
+            ):
+                transaction.status = TransactionStatus.success
+                updated = True
+
+        if updated:
+            db.commit()
 
     def deposit(self, db: Session, user: User, data: DepositRequest) -> Transaction:
         """
@@ -175,13 +200,19 @@ class PaymentService:
             to_account.balance += data.amount
 
             # Step 7: Record and commit
+            transaction_status = (
+                TransactionStatus.processing
+                if is_flagged and data.amount >= settings.fraud_large_amount
+                else TransactionStatus.success
+            )
+
             transaction = Transaction(
                 reference_id=reference_id,
                 from_account_id=from_account_id,
                 to_account_id=to_account_id,
                 transaction_type=TransactionType.transfer,
                 amount=data.amount,
-                status=TransactionStatus.success,
+                status=transaction_status,
                 is_flagged=is_flagged,
                 flagged_reason=flagged_reason,
             )
@@ -237,7 +268,7 @@ class PaymentService:
         if account.user_id != user.id:
             raise HTTPException(status_code=403, detail="You can only view your own transaction history.")
 
-        return (
+        transactions = (
             db.query(Transaction)
             .filter(
                 (Transaction.from_account_id == account.id) |
@@ -246,3 +277,6 @@ class PaymentService:
             .order_by(Transaction.created_at.desc())
             .all()
         )
+
+        self._promote_processing_transactions(db, transactions)
+        return transactions
