@@ -9,7 +9,7 @@ import models.account     # noqa: F401
 import models.transaction # noqa: F401
 import models.loan        # noqa: F401
 
-from routes import auth, account, transaction, loan
+from routes import auth, account, transaction, loan, admin
 
 settings = get_settings()
 
@@ -52,3 +52,4 @@ app.include_router(auth.router,        prefix="/auth")
 app.include_router(account.router,     prefix="/accounts")
 app.include_router(transaction.router, prefix="/transactions")
 app.include_router(loan.router,        prefix="/loans")
+app.include_router(admin.router,       prefix="/admin")

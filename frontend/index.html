@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BankingSystem — Login</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="auth-page">
+
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>🏦 BankingSystem</h1>
+      <p>Secure · Simple · Smart</p>
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-login"    onclick="showTab('login')">Login</button>
+      <button class="tab-btn"        id="tab-register" onclick="showTab('register')">Register</button>
+    </div>
+
+    <!-- Login form -->
+    <div id="panel-login">
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" class="input" placeholder="you@example.com" required />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" class="input" placeholder="••••••••" required />
+        </div>
+        <p class="form-error" id="login-error"></p>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">Login</button>
+      </form>
+      <p style="margin-top:16px; text-align:center; font-size:0.88rem; color:var(--text-muted)">
+        Don't have an account? <a href="#" onclick="showTab('register')">Register</a>
+      </p>
+    </div>
+
+    <!-- Register form -->
+    <div id="panel-register" style="display:none">
+      <form id="register-form" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="reg-name">Full Name</label>
+          <input id="reg-name" type="text" class="input" placeholder="John Doe" required />
+        </div>
+        <div class="form-group">
+          <label for="reg-email">Email</label>
+          <input id="reg-email" type="email" class="input" placeholder="you@example.com" required />
+        </div>
+        <div class="form-group">
+          <label for="reg-password">Password <small style="color:var(--text-muted)">(min 6 characters)</small></label>
+          <input id="reg-password" type="password" class="input" placeholder="••••••••" minlength="6" required />
+        </div>
+        <p class="form-error" id="register-error"></p>
+        <button type="submit" class="btn btn-primary btn-full" id="register-btn">Create Account</button>
+      </form>
+      <p style="margin-top:16px; text-align:center; font-size:0.88rem; color:var(--text-muted)">
+        Already have an account? <a href="#" onclick="showTab('login')">Login</a>
+      </p>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    // Redirect to dashboard if already logged in
+    if (getToken()) window.location.href = 'dashboard.html';
+
+    function showTab(name) {
+      document.getElementById('panel-login').style.display    = name === 'login'    ? 'block' : 'none';
+      document.getElementById('panel-register').style.display = name === 'register' ? 'block' : 'none';
+      document.getElementById('tab-login').classList.toggle('active',    name === 'login');
+      document.getElementById('tab-register').classList.toggle('active', name === 'register');
+    }
+
+    function setLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      btn.disabled = loading;
+      btn.innerHTML = loading ? '<span class="spinner"></span> Please wait…' : btn.dataset.label;
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email    = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const errEl    = document.getElementById('login-error');
+      const btn      = document.getElementById('login-btn');
+      btn.dataset.label = btn.textContent;
+
+      errEl.classList.remove('show');
+      setLoading('login-btn', true);
+
+      try {
+        await api.login(email, password);
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+        setLoading('login-btn', false);
+        btn.textContent = btn.dataset.label;
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const name     = document.getElementById('reg-name').value;
+      const email    = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-password').value;
+      const errEl    = document.getElementById('register-error');
+      const btn      = document.getElementById('register-btn');
+      btn.dataset.label = btn.textContent;
+
+      errEl.classList.remove('show');
+      setLoading('register-btn', true);
+
+      try {
+        await api.register(name, email, password);
+        // Auto-login after register
+        await api.login(email, password);
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+        setLoading('register-btn', false);
+        btn.textContent = btn.dataset.label;
+      }
+    }
+  </script>
+</body>
+</html>
