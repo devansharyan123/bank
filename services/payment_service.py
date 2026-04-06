@@ -154,7 +154,14 @@ class PaymentService:
         if is_flagged:
             logger.warning(f"Fraud flagged on {data.from_account_number}: {flagged_reason}")
 
-        reference_id = generate_reference_id()
+        # Store IDs in plain variables NOW, before the try block.
+        # After db.rollback(), SQLAlchemy expires all ORM objects — accessing
+        # from_account.id inside the except block would trigger a lazy load
+        # which can crash the except block itself, causing the whole request
+        # to die without sending a response ("Failed to fetch" in the browser).
+        from_account_id = from_account.id
+        to_account_id   = to_account.id
+        reference_id    = generate_reference_id()
 
         try:
             # Step 4: Debit the sender
@@ -170,8 +177,8 @@ class PaymentService:
             # Step 7: Record and commit
             transaction = Transaction(
                 reference_id=reference_id,
-                from_account_id=from_account.id,
-                to_account_id=to_account.id,
+                from_account_id=from_account_id,
+                to_account_id=to_account_id,
                 transaction_type=TransactionType.transfer,
                 amount=data.amount,
                 status=TransactionStatus.success,
@@ -186,24 +193,38 @@ class PaymentService:
             return transaction
 
         except RuntimeError as error:
-            # Rollback undoes the debit in Step 4 — sender's balance is fully restored
+            # Rollback undoes the debit in Step 4 — sender's balance is fully restored.
             db.rollback()
             logger.warning(f"Transfer rolled back | Ref: {reference_id} | Reason: {error}")
 
-            # Save a failed record for the audit trail
-            failed_tx = Transaction(
-                reference_id=reference_id,
-                from_account_id=from_account.id,
-                to_account_id=to_account.id,
-                transaction_type=TransactionType.transfer,
-                amount=data.amount,
-                status=TransactionStatus.failed,
-                failure_reason=str(error),
-            )
-            db.add(failed_tx)
-            db.commit()
-            db.refresh(failed_tx)
-            return failed_tx
+            # Open a FRESH session to save the failed record.
+            # We cannot reuse `db` after db.rollback() — SQLite/SQLAlchemy marks the
+            # session as dirty and a subsequent commit on it is unreliable.
+            from database import SessionLocal
+            fresh_db = SessionLocal()
+            try:
+                failed_tx = Transaction(
+                    reference_id=reference_id,
+                    from_account_id=from_account_id,
+                    to_account_id=to_account_id,
+                    transaction_type=TransactionType.transfer,
+                    amount=data.amount,
+                    status=TransactionStatus.failed,
+                    failure_reason=str(error),
+                )
+                fresh_db.add(failed_tx)
+                fresh_db.commit()
+                fresh_db.refresh(failed_tx)
+                return failed_tx
+            except Exception as save_error:
+                fresh_db.rollback()
+                logger.error(f"Could not save failed transaction record: {save_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Transfer failed and rolled back. Reason: {str(error)}",
+                )
+            finally:
+                fresh_db.close()
 
     def get_history(self, db: Session, account_number: str, user: User) -> list[Transaction]:
         """Return all transactions for an account (sent and received), newest first."""

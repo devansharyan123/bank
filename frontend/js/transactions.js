@@ -4,6 +4,53 @@
  */
 
 let _txAccounts = [];  // cached account list for the dropdowns
+let _txHistoryRefreshTimer = null;
+
+const SUSPICIOUS_AMOUNT_THRESHOLD = 1000000;
+const SUSPICIOUS_DELAY_MS = 10_000;
+
+function getCreatedAtMs(tx) {
+  const parsed = new Date(tx.created_at).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isHighValueSuspicious(tx) {
+  return Number(tx.amount) >= SUSPICIOUS_AMOUNT_THRESHOLD && tx.status !== 'failed';
+}
+
+function getSuspiciousRemainingMs(tx) {
+  if (!isHighValueSuspicious(tx)) return 0;
+  const createdAtMs = getCreatedAtMs(tx);
+  if (createdAtMs === null) return 0;
+  const elapsedMs = Date.now() - createdAtMs;
+  return Math.max(0, SUSPICIOUS_DELAY_MS - elapsedMs);
+}
+
+function getVisualStatus(tx) {
+  if (!isHighValueSuspicious(tx)) return tx.status;
+  return getSuspiciousRemainingMs(tx) > 0 ? 'processing' : 'success';
+}
+
+function getVisualNotes(tx) {
+  const notes = [];
+  const remainingMs = getSuspiciousRemainingMs(tx);
+
+  if (remainingMs > 0) {
+    notes.push('<span class="badge badge-suspicious">Suspicious</span>');
+    notes.push('<span class="tx-processing-note"><span class="spinner-inline" aria-hidden="true"></span>Buffering for 10s</span>');
+  } else if (isHighValueSuspicious(tx)) {
+    notes.push('<span class="badge badge-success">Successful</span>');
+  }
+
+  if (tx.is_flagged && !isHighValueSuspicious(tx)) {
+    notes.push(`<span class="badge badge-flagged" title="${tx.flagged_reason}">⚠️ Flagged</span>`);
+  }
+  if (tx.failure_reason) {
+    notes.push(`<span title="${tx.failure_reason}" style="color:var(--danger)">↩ Rolled back</span>`);
+  }
+
+  return notes.join(' ');
+}
 
 async function renderTransactionsView() {
   const content = document.getElementById('content');
@@ -134,6 +181,9 @@ function onAccountChange() {
 }
 
 async function loadHistory(accountNumber) {
+  clearTimeout(_txHistoryRefreshTimer);
+  _txHistoryRefreshTimer = null;
+
   const body = document.getElementById('history-body');
   body.innerHTML = '<p style="color:var(--text-muted)">Loading…</p>';
   try {
@@ -161,16 +211,23 @@ async function loadHistory(accountNumber) {
               <td><code style="font-size:0.82rem">${tx.reference_id}</code></td>
               <td>${typeBadge(tx.transaction_type)}</td>
               <td><strong>₹${fmt(tx.amount)}</strong></td>
-              <td>${statusBadge(tx.status)}</td>
+              <td>${statusBadge(getVisualStatus(tx))}</td>
               <td style="font-size:0.82rem; color:var(--text-muted)">
-                ${tx.is_flagged ? `<span class="badge badge-flagged" title="${tx.flagged_reason}">⚠️ Flagged</span> ` : ''}
-                ${tx.failure_reason ? `<span title="${tx.failure_reason}" style="color:var(--danger)">↩ Rolled back</span>` : ''}
+                ${getVisualNotes(tx)}
               </td>
             </tr>
           `).join('')}
         </tbody>
       </table>
     `;
+
+    const remainingWindows = txns
+      .map(getSuspiciousRemainingMs)
+      .filter(ms => ms > 0);
+    if (remainingWindows.length > 0) {
+      const reloadInMs = Math.min(...remainingWindows) + 120;
+      _txHistoryRefreshTimer = setTimeout(() => loadHistory(accountNumber), reloadInMs);
+    }
   } catch (err) {
     body.innerHTML = `<p style="color:var(--danger)">${err.message}</p>`;
   }
@@ -249,10 +306,12 @@ async function handleTransfer(e) {
       showToast(`₹${fmt(amount)} transferred successfully! Ref: ${result.reference_id}`, 'success');
     }
     document.getElementById('transfer-form').reset();
-    loadHistory(fromAccount);
   } catch (err) {
     errEl.textContent = err.message; errEl.classList.add('show');
   } finally {
     btn.disabled = false; btn.textContent = orig;
+    // Always reload history — even if the request failed — so failed
+    // transactions appear in the table immediately after the attempt.
+    loadHistory(fromAccount);
   }
 }

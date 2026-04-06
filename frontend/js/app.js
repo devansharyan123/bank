@@ -255,9 +255,13 @@ function fmt(n) {
 }
 
 function statusBadge(status) {
+  if (status === 'processing') {
+    return '<span class="badge badge-processing"><span class="spinner-inline" aria-hidden="true"></span>processing</span>';
+  }
+
   const map = {
     success: 'badge-success', failed: 'badge-danger',
-    pending: 'badge-pending', approved: 'badge-success',
+    pending: 'badge-pending', suspicious: 'badge-suspicious', approved: 'badge-success',
     rejected: 'badge-danger', active: 'badge-info', closed: 'badge-info',
   };
   return `<span class="badge ${map[status] || 'badge-info'}">${status}</span>`;

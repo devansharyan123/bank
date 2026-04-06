@@ -285,6 +285,14 @@ a:hover { text-decoration: underline; }
 .badge-success  { background: #d1fae5; color: #065f46; }
 .badge-danger   { background: #fee2e2; color: #991b1b; }
 .badge-warning  { background: #fef3c7; color: #92400e; }
+.badge-suspicious { background: #fef3c7; color: #92400e; }
+.badge-processing {
+  background: #fef3c7;
+  color: #92400e;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .badge-pending  { background: #e0e7ff; color: #3730a3; }
 .badge-savings  { background: #dbeafe; color: #1e40af; }
 .badge-current  { background: #f3e8ff; color: #6b21a8; }
@@ -398,6 +406,22 @@ a:hover { text-decoration: underline; }
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+}
+.spinner-inline {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(146, 64, 14, 0.3);
+  border-top-color: #92400e;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+.tx-processing-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #92400e;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -27,7 +27,7 @@ def test_sliding_window_counts_only_recent():
 def test_fraud_detected_large_amount():
     """A single large transfer should trigger a fraud flag."""
     is_flagged, reason = check_for_fraud(
-        amount=Decimal("200000"),   # ₹2,00,000 — above ₹1,00,000 threshold
+        amount=Decimal("1000000"),  # ₹10,00,000 — at/above threshold
         recent_transactions=[],
     )
     assert is_flagged is True

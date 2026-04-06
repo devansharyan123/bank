@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./bank.db"
 
     # Fraud detection thresholds
-    fraud_large_amount: int = 100000             # flag any transfer above ₹1,00,000
+    fraud_large_amount: int = 1000000            # flag any transfer above/equal ₹10,00,000
     fraud_rapid_tx_count: int = 5                # flag if more than 5 transactions...
     fraud_rapid_tx_window_minutes: int = 10      # ...happen within 10 minutes
 
